@@ -21,7 +21,7 @@ def echo(message):
 
 
 def time():
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S\n")
+    current_time = datetime.now().strftime("%H:%M:%S\n")
     return current_time.encode('utf-8')
 
 
