@@ -58,6 +58,49 @@ def upload(client, message):
     return "File uploaded successfully".encode('utf-8')
 
 
+def download(client, message):
+    parts = message.decode('utf-8').split(' ', 1)
+    filename = parts[1]
+
+    if os.path.exists(filename):
+        file_size = os.path.getsize(filename)
+        client.sendall(str(file_size).encode('utf-8'))
+        client.recv(1024)  # Wait for client readiness
+        with open(filename, 'rb') as file:
+            while True:
+                file_data = file.read(1024)
+                if not file_data:
+                    break
+                client.sendall(file_data)
+        print(f"File '{filename}' sent to the client")
+    else:
+        client.sendall("-1".encode('utf-8'))  # File not found
+
+
+def handle_connection_loss(client_socket, filename):
+    try_count = 0
+    max_attempts = 3
+    delay = 5  # seconds
+    while try_count < max_attempts:
+        try_count += 1
+        print(f"Connection lost. Trying to resume transmission (Attempt {try_count} of {max_attempts})...")
+        time.sleep(delay)
+        try:
+            with open(filename, "rb") as file:
+                file.seek(client_socket.recv(1024))  # Seek to the last successfully received position
+                while True:
+                    data = file.read(1024)
+                    if not data:
+                        break
+                    client_socket.sendall(data)
+                print("File transmission resumed successfully.")
+                return True
+        except Exception as e:
+            print(f"Failed to resume transmission: {e}")
+    print("Failed to resume transmission after multiple attempts.")
+    return False
+
+
 def remove_temp_files():
     for filename in os.listdir():
         if filename.endswith('.temp'):
@@ -121,6 +164,24 @@ while True:
                     break
                 client_socket.sendall(response)
 
+            elif data.startswith(b'DOWNLOAD'):
+                responce = download(client_socket, data)
+                parts = data.decode('utf-8').split(' ', 1)
+                filename = parts[1]
+                if os.path.exists(filename):
+                    file_size = os.path.getsize(filename)
+                    client_socket.sendall(str(file_size).encode('utf-8'))
+                    client_socket.recv(1024)  # Wait for client readiness
+                    with open(filename, 'rb') as file:
+                        while True:
+                            file_data = file.read(1024)
+                            if not file_data:
+                                break
+                            client_socket.sendall(file_data)
+                    print(f"File '{filename}' sent to the client")
+                else:
+                    client_socket.sendall("-1".encode('utf-8'))  # File not found    
+
             elif data.startswith(b'QUIT'):
                 print("Closing the connection")
                 client_socket.close()
@@ -133,6 +194,11 @@ while True:
     except Exception as e:
         print(f"\nException occurred: {e}.")
         client_socket.close()
+
+        if handle_connection_loss(client_socket, filename):
+            print("Connection resumed successfully.")
+        else:
+            print("Failed to resume connection.")
 
         print("Shutting down the server")
         remove_temp_files()
