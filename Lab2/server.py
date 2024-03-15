@@ -63,42 +63,24 @@ def download(client, message):
     filename = parts[1]
 
     if os.path.exists(filename):
-        file_size = os.path.getsize(filename)
-        client.sendall(str(file_size).encode('utf-8'))
-        client.recv(1024)  # Wait for client readiness
-        with open(filename, 'rb') as file:
+        with open(filename, "rb") as file:
+            file_size = os.path.getsize(filename)
+            client.sendall(str(file_size).encode('utf-8'))
+
+            sent_size = int(client_socket.recv(1024).decode('utf-8'))
+            if sent_size != 0:
+                print("The download continues")
+            file.seek(sent_size)
+
             while True:
                 file_data = file.read(1024)
                 if not file_data:
                     break
                 client.sendall(file_data)
-        print(f"File '{filename}' sent to the client")
-    else:
-        client.sendall("-1".encode('utf-8'))  # File not found
 
+        print(f"File '{filename}' sent")
 
-def handle_connection_loss(client_socket, filename):
-    try_count = 0
-    max_attempts = 3
-    delay = 5  # seconds
-    while try_count < max_attempts:
-        try_count += 1
-        print(f"Connection lost. Trying to resume transmission (Attempt {try_count} of {max_attempts})...")
-        time.sleep(delay)
-        try:
-            with open(filename, "rb") as file:
-                file.seek(client_socket.recv(1024))  # Seek to the last successfully received position
-                while True:
-                    data = file.read(1024)
-                    if not data:
-                        break
-                    client_socket.sendall(data)
-                print("File transmission resumed successfully.")
-                return True
-        except Exception as e:
-            print(f"Failed to resume transmission: {e}")
-    print("Failed to resume transmission after multiple attempts.")
-    return False
+        return "File downloaded successfully".encode('utf-8')
 
 
 def remove_temp_files():
@@ -110,9 +92,8 @@ def remove_temp_files():
 # IPv4 addresses, TCP-protocol
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# ! CHANGE to make it possible to connect from a different device
-host = '127.0.0.1'
-port = 12345
+host = input("Enter server IP address: ")
+port = int(input("Enter server port: "))
 server_address = (host, port)
 
 session_ids = {}
@@ -165,22 +146,11 @@ while True:
                 client_socket.sendall(response)
 
             elif data.startswith(b'DOWNLOAD'):
-                responce = download(client_socket, data)
-                parts = data.decode('utf-8').split(' ', 1)
-                filename = parts[1]
-                if os.path.exists(filename):
-                    file_size = os.path.getsize(filename)
-                    client_socket.sendall(str(file_size).encode('utf-8'))
-                    client_socket.recv(1024)  # Wait for client readiness
-                    with open(filename, 'rb') as file:
-                        while True:
-                            file_data = file.read(1024)
-                            if not file_data:
-                                break
-                            client_socket.sendall(file_data)
-                    print(f"File '{filename}' sent to the client")
-                else:
-                    client_socket.sendall("-1".encode('utf-8'))  # File not found    
+                response = download(client_socket, data)
+                if response == "File wasn't downloaded.".encode('utf-8'):
+                    client_socket.close()
+                    break
+                client_socket.sendall(response)
 
             elif data.startswith(b'QUIT'):
                 print("Closing the connection")
@@ -194,11 +164,6 @@ while True:
     except Exception as e:
         print(f"\nException occurred: {e}.")
         client_socket.close()
-
-        if handle_connection_loss(client_socket, filename):
-            print("Connection resumed successfully.")
-        else:
-            print("Failed to resume connection.")
 
         print("Shutting down the server")
         remove_temp_files()
