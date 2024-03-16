@@ -60,13 +60,12 @@ def main():
                 file_size = int(client_socket.recv(1024).decode('utf-8'))
                 if file_size == 0:
                     print("File not found on the server.")
-                    return
+                    continue
 
                 received_size = 0
 
-                if os.path.exists(filename + '.temp'):
+                if os.path.exists(filename):
                     print(f"The server has continued to send {filename}.")
-                    os.rename(filename + '.temp', filename)
                     received_size = os.path.getsize(filename)
                     client_socket.sendall(str(received_size).encode('utf-8'))
                 else:
@@ -75,12 +74,10 @@ def main():
                 with open(filename, "ab" if received_size > 0 else "wb") as file:
                     while received_size < file_size:
                         file_data = client_socket.recv(1024)
-                        if not file_data:
-                            print("\nDownloading was interrupted.")
-                            os.rename(filename, filename + '.temp')
-                            return "File wasn't downloaded.".encode('utf-8')
                         file.write(file_data)
                         received_size += len(file_data)
+
+                client_socket.sendall("File received".encode('utf-8'))
 
                 response = client_socket.recv(1024)
                 print(response.decode('utf-8'))
