@@ -1,5 +1,4 @@
 import os
-import select
 import socket
 import uuid
 from datetime import datetime
@@ -62,6 +61,7 @@ def upload(client, message):
 def download(client, message):
     parts = message.decode('utf-8').split(' ', 1)
     filename = parts[1]
+    file_size = 0
 
     if os.path.exists(filename):
         with open(filename, "rb") as file:
@@ -71,17 +71,27 @@ def download(client, message):
             sent_size = int(client_socket.recv(1024).decode('utf-8'))
             if sent_size != 0:
                 print("The download continues")
-            file.seek(sent_size)
+                file.seek(sent_size)
 
             while True:
                 file_data = file.read(1024)
                 if not file_data:
                     break
-                client.sendall(file_data)
+                try:
+                    client.sendall(file_data)
+                except BrokenPipeError:
+                    print("\nDownloading was interrupted.")
+                    return "File wasn't downloaded.".encode('utf-8')
 
         print(f"File '{filename}' sent")
 
-        return "File downloaded successfully".encode('utf-8')
+        client_response = client.recv(1024).decode('utf-8')
+        if client_response == "File received":
+            return "File downloaded successfully".encode('utf-8')
+        else:
+            return "File wasn't downloaded.".encode('utf-8')
+    else:
+        return str(file_size).encode('utf-8')
 
 
 def remove_temp_files():
@@ -114,9 +124,9 @@ while True:
     try:
         if client_address[0] not in session_ids:
             remove_temp_files()
-            print("Temporary files removed for a new client")
+            print("Temporary files have been removed for a new client")
 
-# OTHER POSSIBLE VARIANTS: 1) structure, storing client addresses, 2) adding client address to the filename
+        # OTHER POSSIBLE VARIANTS: 1) structure, storing client addresses, 2) adding client address to the filename
         session_id = str(uuid.uuid4())
         session_ids[client_address[0]] = session_id
 
@@ -127,7 +137,7 @@ while True:
             print(f"Data received: {data.decode('utf-8')}")
 
             if not data:
-                print("\nConnection is lost.\n")
+                print("\nConnection is lost.")
                 client_socket.close()
                 break
 
@@ -161,7 +171,7 @@ while True:
             else:
                 client_socket.sendall(b'Invalid command.\n')
 
-# in case an exception occurs, the server shuts down
+    # in case an exception occurs, the server shuts down
     except Exception as e:
         print(f"\nException occurred: {e}.")
         client_socket.close()
